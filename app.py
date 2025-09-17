@@ -7,7 +7,6 @@ import html
 # ---------------------------
 # Configuration: Hugging Face Model ID
 # ---------------------------
-# We now use a model ID from the Hugging Face Hub
 MODEL_ID = "BISHAL2301/summarizer"
 
 # ---------------------------
@@ -37,7 +36,6 @@ def split_into_sentences(text: str):
     text = (text or "").strip()
     if not text:
         return []
-    # Split by sentences, preserving delimiters, and handle newlines
     sentences = re.split(r'(?<=[.!?])\s+|\n+', text)
     return [s.strip() for s in sentences if s.strip()]
 
@@ -47,7 +45,6 @@ def split_into_sentences(text: str):
 @st.cache_resource
 def load_model_cached(model_id: str):
     """Loads and caches the model/tokenizer from Hugging Face Hub."""
-    # local_files_only is removed to allow downloading
     tokenizer = T5Tokenizer.from_pretrained(model_id)
     model = T5ForConditionalGeneration.from_pretrained(model_id)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -57,9 +54,8 @@ def load_model_cached(model_id: str):
 
 # Initialize model loading
 if not st.session_state["model_loaded"]:
-    with st.spinner(f"Loading model '{MODEL_ID}'..."):
+    with st.spinner(f"Loading model '{MODEL_ID}'... This may take a moment."):
         try:
-            # The check for a local directory is removed
             tokenizer, model, device = load_model_cached(MODEL_ID)
             st.session_state.update({
                 "tokenizer": tokenizer,
@@ -104,11 +100,6 @@ st.markdown("""
     --border-color: #DEE2E6;
 }
 body { background-color: var(--background-color); color: var(--text-color); }
-@keyframes pulse {
-    0%, 100% { opacity: 0.6; }
-    50% { opacity: 1; }
-}
-.loading-text { color: var(--subtle-text-color); font-weight: bold; animation: pulse 1.5s ease-in-out infinite; }
 .stButton > button { background-color: var(--primary-color) !important; border: 1px solid var(--primary-color) !important; color: white !important; }
 .stButton > button:hover { opacity: 0.8; }
 .header { text-align:center; margin-bottom:14px; }
@@ -150,11 +141,11 @@ with left_col:
 
     col1, col2 = st.columns(2)
     with col1:
-        st.button("🚀 Summarize", on_click=start_summarization, use_container_width=True)
+        st.button("🚀 Summarize", on_click=start_summarization, use_container_width=True, disabled=not st.session_state.model_loaded)
     with col2:
         st.button("🧹 Clear", on_click=clear_all, use_container_width=True)
 
-# --- This is the main logic block that runs when generating ---
+# This is the main logic block that runs when 'generating' is true
 if st.session_state.generating:
     try:
         tokenizer = st.session_state.tokenizer
@@ -174,7 +165,7 @@ if st.session_state.generating:
             outputs = model.generate(
                 inputs,
                 max_length=max_len,
-                min_length=max(20, max_len // 4), # Ensure min_length is reasonable
+                min_length=max(20, max_len // 4),
                 length_penalty=2.0,
                 num_beams=4,
                 early_stopping=True,
@@ -187,23 +178,22 @@ if st.session_state.generating:
         st.session_state.error = f"Error during generation: {e}"
         st.session_state.summary = ""
     finally:
-        # After generation (or error), turn off the generating flag
         st.session_state.generating = False
-        st.rerun() # Rerun to update the display in the right column
+        st.rerun()
 
-
+# --- This is the display logic for the right column ---
 with right_col:
     st.subheader("Summary Output")
-    summary_placeholder = st.empty()
 
-    # Display spinner, summary, error, or initial message
+    # The spinner is now handled here.
     if st.session_state.generating:
-        summary_placeholder.markdown(
-            "<div class='text-area'><div class='loading-text'>Generating summary...</div></div>",
-            unsafe_allow_html=True
-        )
+        # Use the native Streamlit spinner
+        with st.spinner("🧠 Generating summary..."):
+            # The empty container with a minimum height ensures the spinner is visible in the box
+            st.markdown("<div style='min-height: 228px;'></div>", unsafe_allow_html=True)
+
     elif st.session_state.error:
-        summary_placeholder.markdown(
+        st.markdown(
             f"<div class='text-area'><div class='text-area-content' style='color:#D32F2F; text-align:center;'>⚠️ {html.escape(st.session_state.error)}</div></div>",
             unsafe_allow_html=True
         )
@@ -215,18 +205,18 @@ with right_col:
             if mode == "Custom":
                 sentences = sentences[:st.session_state.custom_bullets]
             list_items = "".join(f"<li>{html.escape(s)}</li>" for s in sentences if s.strip())
-            summary_placeholder.markdown(
+            st.markdown(
                 f"<div class='text-area'><div class='text-area-content'><ul>{list_items}</ul></div></div>",
                 unsafe_allow_html=True
             )
         else: # Paragraph mode
             safe_html = "<div style='white-space:pre-wrap'>" + html.escape(summary) + "</div>"
-            summary_placeholder.markdown(
+            st.markdown(
                 f"<div class='text-area'><div class='text-area-content'>{safe_html}</div></div>",
                 unsafe_allow_html=True
             )
     else:
-        summary_placeholder.markdown(
+        st.markdown(
             "<div class='text-area'><div class='text-area-content' style='color:var(--subtle-text-color); text-align:center;'>Your generated summary will appear here.</div></div>",
             unsafe_allow_html=True
         )
