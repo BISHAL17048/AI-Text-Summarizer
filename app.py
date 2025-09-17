@@ -19,7 +19,7 @@ def load_model():
     """
     Loads and caches the tokenizer and the model from Hugging Face.
     """
-    MODEL_NAME = "BISHAL2301/bishalray-summarizer"
+    MODEL_NAME = "BISHAL2301/summarizer"
     try:
         tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
         model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
@@ -243,5 +243,6 @@ if summarize_button:
                     )
                 except Exception as e:
                     st.error(f"An error occurred during summarization: {e}")
+
 
 
