@@ -23,7 +23,7 @@ os.environ["HUGGINGFACE_HUB_TOKEN"] = "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"
 # ---------------------------
 @st.cache_resource(show_spinner=True)
 def load_model():
-    MODEL_NAME = "BISHAL2301/bishalray-summarizer"  # Your HF repo
+    MODEL_NAME = "BISHAL2301/summarizer"  # Your HF repo
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, use_auth_token=True)
     model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME, use_auth_token=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -128,4 +128,5 @@ if st.button("Summarize"):
             summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
         
         st.markdown(f'<div class="card"><div class="summary-text">{summary}</div></div>', unsafe_allow_html=True)
+
 
