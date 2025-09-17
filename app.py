@@ -222,4 +222,5 @@ with right_col:
         )
 
 # Footer
-st.markdown("<div class='footer-text'>Made with ❤️ using Streamlit & Transformers</div>", unsafe_allow_html=True)
+st.markdown("<div class='footer-text'>A LLM Model Made with ❤️ using Streamlit and Transformers by Bishal Ray</div>", unsafe_allow_html=True)
+
