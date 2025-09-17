@@ -32,7 +32,7 @@ Open the live application here: [https://summary-analysis-1-ktnobq3ehutvc46tyiaq
 ## 🛠️ Tech Stack
 
 * **Frontend/UI:** Streamlit
-* **Backend/ML Model:** Hugging Face Transformers (T5-small), PyTorch
+* **Backend/ML Model:** Hugging Face Model, PyTorch
 * **Data Handling:** NumPy, Pandas
 * **Utilities:** SentencePiece, Hugging Face Hub
 * **Deployment:** Streamlit Cloud
