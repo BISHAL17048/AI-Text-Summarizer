@@ -17,7 +17,7 @@ st.set_page_config(
 # ---------------------------
 @st.cache_resource(show_spinner=True)
 def load_model():
-    MODEL_NAME = "BISHAL2301/bishalray-summarizer" # Replace with your Hugging Face model repo
+    MODEL_NAME = "BISHAL2301/summarizer" # Replace with your Hugging Face model repo
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -613,5 +613,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
