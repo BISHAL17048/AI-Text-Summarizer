@@ -16,7 +16,7 @@ st.set_page_config(
 # Set Hugging Face token
 # ---------------------------
 # Recommended: Set this in Streamlit Cloud Secrets (HUGGINGFACE_HUB_TOKEN)
-os.environ["HUGGINGFACE_HUB_TOKEN"] = "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"
+os.environ["HUGGINGFACE_HUB_TOKEN"] = "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"
 
 # ---------------------------
 # Load Model & Tokenizer
@@ -128,3 +128,4 @@ if st.button("Summarize"):
             summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
         
         st.markdown(f'<div class="card"><div class="summary-text">{summary}</div></div>', unsafe_allow_html=True)
+
