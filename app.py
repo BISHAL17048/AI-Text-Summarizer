@@ -1,5 +1,5 @@
 import streamlit as st
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import T5Tokenizer, T5ForConditionalGeneration
 import torch
 import re
 
@@ -13,19 +13,39 @@ st.set_page_config(
 )
 
 # ---------------------------
-# Load Model & Tokenizer
+# --- MODIFIED SECTION ---
+# Load Model & Tokenizer from Hugging Face Hub
 # ---------------------------
-@st.cache_resource(show_spinner=True)
+@st.cache_resource(show_spinner="Loading AI model from Hugging Face...")
 def load_model():
-    MODEL_NAME = "BISHAL2301/summarizer" # Replace with your Hugging Face model repo
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-    model.eval()
-    return tokenizer, model, device
+    """
+    Loads and caches the T5 model and tokenizer from Hugging Face.
+    """
+    try:
+        # This is the Hugging Face model path
+        MODEL_NAME = "BISHAL2301/summarizer"
+        
+        tokenizer = T5Tokenizer.from_pretrained(MODEL_NAME)
+        model = T5ForConditionalGeneration.from_pretrained(MODEL_NAME)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model.to(device)
+        model.eval()
+        return tokenizer, model, device
+    except Exception as e:
+        st.error(f"Error loading model from Hugging Face: {e}")
+        st.info("Please check your internet connection and the model name.")
+        return None, None, None
 
-tokenizer, model, device = load_model()
+# Load the model, handling potential errors
+try:
+    tokenizer, model, device = load_model()
+except Exception as e:
+    st.error(f"Failed to initialize the application: {e}")
+    st.stop()
+# ---------------------------
+# End of Modified Section
+# ---------------------------
+
 
 # ---------------------------
 # Helper Functions
@@ -66,6 +86,33 @@ st.markdown(
         max-width: 1100px;
         margin: 0 auto;
         padding: 20px;
+    }
+    
+    .header {
+        text-align: center;
+        padding: 32px 20px;
+        margin-bottom: 24px;
+    }
+    
+    .title {
+        font-size: 42px;
+        color: #1a73e8;
+        font-weight: 400;
+        margin-bottom: 8px;
+        letter-spacing: -0.5px;
+    }
+    
+    .tagline {
+        color: #5f6368;
+        font-size: 16px;
+        margin-bottom: 4px;
+        font-weight: 400;
+    }
+    
+    .credit {
+        color: #5f6368;
+        font-size: 14px;
+        font-weight: 400;
     }
     
     .summarizer-card {
@@ -193,6 +240,7 @@ st.markdown(
         display: flex;
         align-items: center;
         gap: 8px;
+        pointer-events: none;
     }
     
     .paste-text-button:hover {
@@ -343,10 +391,56 @@ st.markdown(
         border-top: 1px solid #f1f3f4;
         font-size: 14px;
         color: #5f6368;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
     }
     
-    .hidden {
-        display: none !important;
+    .download-button {
+        background: #1a73e8;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    
+    .download-button:hover {
+        background: #1557b0;
+    }
+    
+    .settings-panel {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        border: 1px solid #e8eaed;
+        padding: 24px;
+        margin-bottom: 24px;
+    }
+    
+    .settings-title {
+        font-size: 18px;
+        color: #202124;
+        font-weight: 500;
+        margin-bottom: 16px;
+    }
+    
+    .setting-item {
+        margin-bottom: 16px;
+    }
+    
+    .setting-label {
+        font-size: 14px;
+        color: #5f6368;
+        font-weight: 500;
+        margin-bottom: 8px;
+        display: block;
     }
     
     /* Hide Streamlit elements */
@@ -359,6 +453,24 @@ st.markdown(
     }
     
     .stButton > button {
+        display: none;
+    }
+    
+    .stSlider > label {
+        display: none;
+    }
+    
+    .stSlider {
+        margin-bottom: 16px;
+    }
+    
+    /* Custom slider styling */
+    .stSlider > div > div > div > div {
+        background: #1a73e8;
+    }
+    
+    /* Hide sidebar content */
+    .css-1d391kg {
         display: none;
     }
     </style>
@@ -379,11 +491,57 @@ if 'is_summarizing' not in st.session_state:
     st.session_state.is_summarizing = False
 if 'input_text' not in st.session_state:
     st.session_state.input_text = ""
+if 'article' not in st.session_state:
+    st.session_state.article = ""
+
+# ---------------------------
+# Header
+# ---------------------------
+st.markdown(
+    '<div class="header">'
+    '<div class="title">Text Summarizer</div>'
+    '<div class="tagline">Intelligent AI-powered text summarization</div>'
+    '<div class="credit">Enhanced with T5 Model by Bishal Ray</div>'
+    '</div>',
+    unsafe_allow_html=True
+)
 
 # ---------------------------
 # Main Container
 # ---------------------------
 st.markdown('<div class="main-container">', unsafe_allow_html=True)
+
+# Settings Panel
+st.markdown('<div class="settings-panel">', unsafe_allow_html=True)
+st.markdown('<div class="settings-title">Advanced Settings</div>', unsafe_allow_html=True)
+
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    st.markdown('<div class="setting-item">', unsafe_allow_html=True)
+    st.markdown('<label class="setting-label">Max Length</label>', unsafe_allow_html=True)
+    max_length = st.slider("", 50, 500, 150, key="max_length")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col2:
+    st.markdown('<div class="setting-item">', unsafe_allow_html=True)
+    st.markdown('<label class="setting-label">Min Length</label>', unsafe_allow_html=True)
+    min_length = st.slider("", 10, 100, 30, key="min_length")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col3:
+    st.markdown('<div class="setting-item">', unsafe_allow_html=True)
+    st.markdown('<label class="setting-label">Beam Search</label>', unsafe_allow_html=True)
+    num_beams = st.slider("", 1, 8, 4, key="num_beams")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col4:
+    st.markdown('<div class="setting-item">', unsafe_allow_html=True)
+    st.markdown('<label class="setting-label">Length Penalty</label>', unsafe_allow_html=True)
+    length_penalty = st.slider("", 0.5, 3.0, 2.0, step=0.1, key="length_penalty")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------
 # Main Summarizer Card
@@ -396,15 +554,15 @@ st.markdown(
     '<div class="modes-row">'
     '<div class="modes-section">'
     '<span class="modes-label">Modes:</span>'
-    f'<button class="mode-tab {"active" if st.session_state.summary_mode == "Paragraph" else ""}" onclick="setMode(\'Paragraph\')">Paragraph</button>'
-    f'<button class="mode-tab {"active" if st.session_state.summary_mode == "Bullet Points" else ""}" onclick="setMode(\'Bullet Points\')">Bullet Points</button>'
-    f'<button class="mode-tab {"active" if st.session_state.summary_mode == "Custom" else ""}" onclick="setMode(\'Custom\')">Custom</button>'
+    f'<div class="mode-tab {"active" if st.session_state.summary_mode == "Paragraph" else ""}" onclick="setMode(\'Paragraph\')">Paragraph</div>'
+    f'<div class="mode-tab {"active" if st.session_state.summary_mode == "Bullet Points" else ""}" onclick="setMode(\'Bullet Points\')">Bullet Points</div>'
+    f'<div class="mode-tab {"active" if st.session_state.summary_mode == "Custom" else ""}" onclick="setMode(\'Custom\')">Custom</div>'
     '</div>'
     '<div class="length-section">'
     '<span class="length-label">Summary Length:</span>'
     '<div class="length-slider-container">'
     '<span class="length-option">Short</span>'
-    '<input type="range" min="1" max="3" value="1" style="margin: 0 8px;">'
+    f'<input type="range" min="1" max="3" value="{["Short", "Medium", "Long"].index(st.session_state.summary_length) + 1}" style="margin: 0 8px;" onchange="setLength(this.value)">'
     '<span class="length-option">Long</span>'
     '</div>'
     '</div>'
@@ -413,7 +571,7 @@ st.markdown(
 )
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Hidden Streamlit controls for functionality
+# Hidden controls for functionality
 col1, col2, col3 = st.columns([1, 1, 1])
 with col1:
     if st.button("Paragraph", key="para_btn"):
@@ -431,25 +589,27 @@ with col3:
         st.rerun()
 
 # Length selector (hidden)
-length = st.selectbox("Length", ["Short", "Medium", "Long"], 
-                     index=["Short", "Medium", "Long"].index(st.session_state.summary_length),
-                     key="length_select")
-st.session_state.summary_length = length
+length_mapping = {"1": "Short", "2": "Medium", "3": "Long"}
+if st.button("Update Length", key="length_update"):
+    # This will be triggered by JavaScript
+    pass
 
 # Input Section
 st.markdown('<div class="input-section">', unsafe_allow_html=True)
 
 # Text input
 article = st.text_area("", 
-                      height=200,
-                      placeholder="Enter or paste your text and press \"Summarize.\"",
-                      key="text_input",
-                      value=st.session_state.input_text)
+                         height=200,
+                         placeholder="Enter or paste your text and press \"Summarize.\"",
+                         key="text_input",
+                         value=st.session_state.article)
+
+st.session_state.article = article
 
 # Show paste button when text area is empty
 if not article.strip():
     st.markdown(
-        '<div class="paste-text-button" onclick="document.querySelector(\'textarea\').focus()">'
+        '<div class="paste-text-button">'
         '<svg class="paste-icon" viewBox="0 0 24 24">'
         '<path d="M19,3H14.82C14.4,1.84 13.3,1 12,1C10.7,1 9.6,1.84 9.18,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3M12,3A1,1 0 0,1 13,4A1,1 0 0,1 12,5A1,1 0 0,1 11,4A1,1 0 0,1 12,3"/>'
         '</svg>'
@@ -480,7 +640,7 @@ input_sentence_count = count_sentences(article)
 
 st.markdown(
     f'<div style="display: flex; align-items: center; gap: 24px;">'
-    f'<button class="summarize-button" onclick="summarize()" {"disabled" if not article.strip() else ""}>Summarize</button>'
+    f'<div class="summarize-button" onclick="summarize()" {"style=\"opacity: 0.5; cursor: not-allowed;\"" if not article.strip() else ""}>Summarize</div>'
     f'<div class="stats"><span class="stat-number">{input_sentence_count}</span> sentences • <span class="stat-number">{input_word_count}</span> words</div>'
     f'</div>',
     unsafe_allow_html=True
@@ -495,6 +655,14 @@ if st.button("Hidden Summarize", key="hidden_summarize"):
         st.session_state.input_text = article
         st.session_state.is_summarizing = True
         st.rerun()
+
+# Clear button (hidden)
+if st.button("Clear All", key="clear_all"):
+    st.session_state.article = ""
+    st.session_state.generated_summary = ""
+    st.session_state.input_text = ""
+    st.session_state.is_summarizing = False
+    st.rerun()
 
 # ---------------------------
 # Summary Box
@@ -513,38 +681,39 @@ if st.session_state.is_summarizing:
     )
     
     # Perform summarization
-    try:
-        # Adjust max_length based on selected length
-        length_mapping = {
-            "Short": {"max_length": 100, "min_length": 25},
-            "Medium": {"max_length": 200, "min_length": 50},
-            "Long": {"max_length": 300, "min_length": 75}
-        }
-        
-        length_params = length_mapping[st.session_state.summary_length]
-        
-        inputs = tokenizer.encode(st.session_state.input_text, return_tensors="pt", truncation=True, max_length=1024).to(device)
-        summary_ids = model.generate(
-            inputs,
-            max_length=length_params["max_length"],
-            min_length=length_params["min_length"],
-            length_penalty=2.0,
-            num_beams=4,
-            early_stopping=True
-        )
-        summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
-        
-        # Format summary based on mode
-        if st.session_state.summary_mode == 'Bullet Points':
-            summary = convert_to_bullet_points(summary)
-        
-        st.session_state.generated_summary = summary
+    if tokenizer and model:
+        try:
+            input_text = "summarize: " + st.session_state.input_text
+            inputs = tokenizer.encode(input_text, return_tensors="pt", max_length=512, truncation=True).to(device)
+            
+            with torch.no_grad():
+                summary_ids = model.generate(
+                    inputs,
+                    max_length=max_length,
+                    min_length=min_length,
+                    length_penalty=length_penalty,
+                    num_beams=num_beams,
+                    early_stopping=True,
+                    no_repeat_ngram_size=3
+                )
+            
+            summary = tokenizer.batch_decode(summary_ids, skip_special_tokens=True)[0]
+            
+            # Format summary based on mode
+            if st.session_state.summary_mode == 'Bullet Points':
+                summary = convert_to_bullet_points(summary)
+            
+            st.session_state.generated_summary = summary
+            st.session_state.is_summarizing = False
+            st.rerun()
+            
+        except Exception as e:
+            st.error(f"Error generating summary: {str(e)}")
+            st.session_state.is_summarizing = False
+    else:
+        st.error("Model not loaded. Cannot generate summary.")
         st.session_state.is_summarizing = False
-        st.rerun()
-        
-    except Exception as e:
-        st.error(f"Error generating summary: {str(e)}")
-        st.session_state.is_summarizing = False
+
 
 elif st.session_state.generated_summary:
     # Display generated summary
@@ -563,22 +732,36 @@ else:
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Summary stats
+# Summary stats and download
 if st.session_state.generated_summary:
     summary_word_count = count_words(st.session_state.generated_summary)
     summary_sentence_count = count_sentences(st.session_state.generated_summary)
     
     st.markdown(
         f'<div class="summary-stats">'
+        f'<div>'
         f'<span class="stat-number">{summary_sentence_count}</span> sentences • '
         f'<span class="stat-number">{summary_word_count}</span> words • '
         f'Mode: <span class="stat-number">{st.session_state.summary_mode}</span>'
+        f'</div>'
+        f'<div class="download-button" onclick="downloadSummary()">'
+        f'<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">'
+        f'<path d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/>'
+        f'</svg>'
+        f'Download'
+        f'</div>'
         f'</div>',
         unsafe_allow_html=True
     )
+    
+    # Hidden download button
+    st.download_button("Download Summary", 
+                      st.session_state.generated_summary, 
+                      file_name="summary.txt", 
+                      mime="text/plain",
+                      key="download_btn")
 
 st.markdown('</div>', unsafe_allow_html=True)
-
 st.markdown('</div>', unsafe_allow_html=True)
 
 # JavaScript for interactivity
@@ -586,6 +769,11 @@ st.markdown(
     """
     <script>
     function summarize() {
+        const textArea = document.querySelector('textarea');
+        if (!textArea || !textArea.value.trim()) {
+            return;
+        }
+        
         // Trigger the hidden summarize button
         const buttons = document.querySelectorAll('button');
         const summarizeBtn = Array.from(buttons).find(btn => btn.textContent === 'Hidden Summarize');
@@ -609,10 +797,33 @@ st.markdown(
             targetBtn.click();
         }
     }
+    
+    function setLength(value) {
+        // Handle length changes if needed
+        console.log('Length changed to:', value);
+    }
+    
+    function downloadSummary() {
+        // Trigger the hidden download button
+        const buttons = document.querySelectorAll('button');
+        const downloadBtn = Array.from(buttons).find(btn => btn.textContent === 'Download Summary');
+        if (downloadBtn) {
+            downloadBtn.click();
+        }
+    }
+    
+    // Auto-focus text area
+    setTimeout(() => {
+        const textArea = document.querySelector('textarea');
+        if (textArea && !textArea.value.trim()) {
+            textArea.focus();
+        }
+    }, 100);
     </script>
     """,
     unsafe_allow_html=True
 )
 
+st.markdown('</div>', unsafe_allow_html=True)
 
 
