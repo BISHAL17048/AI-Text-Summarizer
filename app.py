@@ -2,828 +2,234 @@ import streamlit as st
 from transformers import T5Tokenizer, T5ForConditionalGeneration
 import torch
 import re
+import html
 
 # ---------------------------
-# Page configuration
+# Configuration: Hugging Face Model ID
 # ---------------------------
-st.set_page_config(
-    page_title="📝 Text Summarizer — Bishal Ray",
-    page_icon="🧠",
-    layout="wide"
-)
+# We now use a model ID from the Hugging Face Hub
+MODEL_ID = "BISHAL2301/summarizer"
 
 # ---------------------------
-# --- MODIFIED SECTION ---
-# Load Model & Tokenizer from Hugging Face Hub
+# Page config
 # ---------------------------
-@st.cache_resource(show_spinner="Loading AI model from Hugging Face...")
-def load_model():
-    """
-    Loads and caches the T5 model and tokenizer from Hugging Face.
-    """
-    try:
-        # This is the Hugging Face model path
-        MODEL_NAME = "BISHAL2301/summarizer"
-        
-        tokenizer = T5Tokenizer.from_pretrained(MODEL_NAME)
-        model = T5ForConditionalGeneration.from_pretrained(MODEL_NAME)
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model.to(device)
-        model.eval()
-        return tokenizer, model, device
-    except Exception as e:
-        st.error(f"Error loading model from Hugging Face: {e}")
-        st.info("Please check your internet connection and the model name.")
-        return None, None, None
-
-# Load the model, handling potential errors
-try:
-    tokenizer, model, device = load_model()
-except Exception as e:
-    st.error(f"Failed to initialize the application: {e}")
-    st.stop()
-# ---------------------------
-# End of Modified Section
-# ---------------------------
-
+st.set_page_config(layout="wide", page_title="Text Summarizer", initial_sidebar_state="expanded")
 
 # ---------------------------
-# Helper Functions
+# Session defaults
 # ---------------------------
-def convert_to_bullet_points(text):
-    """Convert paragraph text to bullet points"""
-    sentences = re.split(r'[.!?]+', text)
-    sentences = [s.strip() for s in sentences if s.strip()]
-    
-    bullet_points = []
-    for sentence in sentences:
-        if len(sentence) > 10:  # Filter out very short fragments
-            bullet_points.append(f"• {sentence}")
-    
-    return '\n'.join(bullet_points)
-
-def count_words(text):
-    """Count words in text"""
-    return len(text.split()) if text.strip() else 0
-
-def count_sentences(text):
-    """Count sentences in text"""
-    sentences = re.split(r'[.!?]+', text)
-    return len([s for s in sentences if s.strip()])
+st.session_state.setdefault("article", "")
+st.session_state.setdefault("summary", "")
+st.session_state.setdefault("model_loaded", False)
+st.session_state.setdefault("tokenizer", None)
+st.session_state.setdefault("model", None)
+st.session_state.setdefault("device", None)
+st.session_state.setdefault("generating", False)
+st.session_state.setdefault("error", None)
+st.session_state.setdefault("mode", "Paragraph")
+st.session_state.setdefault("summary_length", 100)
+st.session_state.setdefault("custom_bullets", 5)
 
 # ---------------------------
-# Custom CSS
+# Utilities
 # ---------------------------
-st.markdown(
-    """
-    <style>
-    .stApp {
-        background: #f8f9fa;
-        font-family: "Segoe UI", Roboto, sans-serif;
-    }
-    
-    .main-container {
-        max-width: 1100px;
-        margin: 0 auto;
-        padding: 20px;
-    }
-    
-    .header {
-        text-align: center;
-        padding: 32px 20px;
-        margin-bottom: 24px;
-    }
-    
-    .title {
-        font-size: 42px;
-        color: #1a73e8;
-        font-weight: 400;
-        margin-bottom: 8px;
-        letter-spacing: -0.5px;
-    }
-    
-    .tagline {
-        color: #5f6368;
-        font-size: 16px;
-        margin-bottom: 4px;
-        font-weight: 400;
-    }
-    
-    .credit {
-        color: #5f6368;
-        font-size: 14px;
-        font-weight: 400;
-    }
-    
-    .summarizer-card {
-        background: white;
-        border-radius: 16px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-        overflow: hidden;
-        border: 1px solid #e8eaed;
-    }
-    
-    .modes-header {
-        padding: 20px 24px 0px 24px;
-        border-bottom: none;
-    }
-    
-    .modes-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 20px;
-    }
-    
-    .modes-section {
-        display: flex;
-        align-items: center;
-        gap: 0px;
-    }
-    
-    .modes-label {
-        font-size: 14px;
-        color: #5f6368;
-        font-weight: 500;
-        margin-right: 16px;
-    }
-    
-    .mode-tab {
-        padding: 8px 16px;
-        background: none;
-        border: none;
-        color: #5f6368;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        border-bottom: 2px solid transparent;
-        transition: all 0.2s ease;
-        margin-right: 24px;
-    }
-    
-    .mode-tab.active {
-        color: #1a73e8;
-        border-bottom-color: #1a73e8;
-    }
-    
-    .mode-tab:hover {
-        color: #1a73e8;
-    }
-    
-    .length-section {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-    
-    .length-label {
-        font-size: 14px;
-        color: #5f6368;
-        font-weight: 500;
-    }
-    
-    .length-slider-container {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    
-    .length-option {
-        font-size: 12px;
-        color: #5f6368;
-    }
-    
-    .input-section {
-        padding: 20px 24px;
-        border-bottom: 1px solid #f1f3f4;
-        position: relative;
-    }
-    
-    .text-input-area {
-        width: 100%;
-        min-height: 200px;
-        border: 1px solid #dadce0;
-        border-radius: 8px;
-        padding: 16px;
-        font-size: 14px;
-        line-height: 1.5;
-        resize: vertical;
-        font-family: inherit;
-        background: #fafbfc;
-        color: #202124;
-    }
-    
-    .text-input-area:focus {
-        outline: none;
-        border-color: #1a73e8;
-        background: white;
-    }
-    
-    .text-input-area::placeholder {
-        color: #9aa0a6;
-    }
-    
-    .paste-text-button {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: #e8f0fe;
-        border: 2px dashed #1a73e8;
-        border-radius: 8px;
-        padding: 20px 24px;
-        color: #1a73e8;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        pointer-events: none;
-    }
-    
-    .paste-text-button:hover {
-        background: #d2e3fc;
-    }
-    
-    .paste-icon {
-        width: 16px;
-        height: 16px;
-        fill: currentColor;
-    }
-    
-    .bottom-section {
-        padding: 16px 24px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-    
-    .upload-doc {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        color: #5f6368;
-        font-size: 14px;
-        cursor: pointer;
-        padding: 8px 12px;
-        border-radius: 6px;
-        transition: background 0.2s ease;
-    }
-    
-    .upload-doc:hover {
-        background: #f8f9fa;
-    }
-    
-    .summarize-button {
-        background: #137333;
-        color: white;
-        border: none;
-        border-radius: 24px;
-        padding: 12px 32px;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-    
-    .summarize-button:hover {
-        background: #0f5720;
-        box-shadow: 0 2px 8px rgba(19, 115, 51, 0.3);
-    }
-    
-    .summarize-button:disabled {
-        background: #dadce0;
-        cursor: not-allowed;
-    }
-    
-    .stats {
-        font-size: 14px;
-        color: #5f6368;
-    }
-    
-    .stat-number {
-        color: #202124;
-        font-weight: 500;
-    }
-    
-    .summary-box {
-        background: white;
-        border-radius: 16px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-        border: 1px solid #e8eaed;
-        min-height: 300px;
-        margin-top: 24px;
-        position: relative;
-    }
-    
-    .summary-content {
-        padding: 24px;
-        min-height: 250px;
-        position: relative;
-    }
-    
-    .summary-text {
-        font-size: 16px;
-        line-height: 1.6;
-        color: #202124;
-        white-space: pre-wrap;
-    }
-    
-    .empty-state {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 250px;
-        text-align: center;
-    }
-    
-    .empty-icon {
-        font-size: 48px;
-        margin-bottom: 16px;
-        opacity: 0.4;
-    }
-    
-    .empty-text {
-        color: #9aa0a6;
-        font-size: 16px;
-        margin-bottom: 8px;
-    }
-    
-    .empty-subtext {
-        color: #9aa0a6;
-        font-size: 14px;
-    }
-    
-    .spinner-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 250px;
-        gap: 16px;
-    }
-    
-    .spinner {
-        width: 32px;
-        height: 32px;
-        border: 3px solid #f1f3f4;
-        border-top: 3px solid #1a73e8;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-    }
-    
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-    
-    .spinner-text {
-        color: #5f6368;
-        font-size: 14px;
-        font-weight: 500;
-    }
-    
-    .summary-stats {
-        padding: 16px 24px;
-        border-top: 1px solid #f1f3f4;
-        font-size: 14px;
-        color: #5f6368;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-    
-    .download-button {
-        background: #1a73e8;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        padding: 8px 16px;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-    
-    .download-button:hover {
-        background: #1557b0;
-    }
-    
-    .settings-panel {
-        background: white;
-        border-radius: 16px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-        border: 1px solid #e8eaed;
-        padding: 24px;
-        margin-bottom: 24px;
-    }
-    
-    .settings-title {
-        font-size: 18px;
-        color: #202124;
-        font-weight: 500;
-        margin-bottom: 16px;
-    }
-    
-    .setting-item {
-        margin-bottom: 16px;
-    }
-    
-    .setting-label {
-        font-size: 14px;
-        color: #5f6368;
-        font-weight: 500;
-        margin-bottom: 8px;
-        display: block;
-    }
-    
-    /* Hide Streamlit elements */
-    .stTextArea > label {
-        display: none;
-    }
-    
-    .stSelectbox > label {
-        display: none;
-    }
-    
-    .stButton > button {
-        display: none;
-    }
-    
-    .stSlider > label {
-        display: none;
-    }
-    
-    .stSlider {
-        margin-bottom: 16px;
-    }
-    
-    /* Custom slider styling */
-    .stSlider > div > div > div > div {
-        background: #1a73e8;
-    }
-    
-    /* Hide sidebar content */
-    .css-1d391kg {
-        display: none;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+def split_into_sentences(text: str):
+    text = (text or "").strip()
+    if not text:
+        return []
+    # Split by sentences, preserving delimiters, and handle newlines
+    sentences = re.split(r'(?<=[.!?])\s+|\n+', text)
+    return [s.strip() for s in sentences if s.strip()]
 
 # ---------------------------
-# Initialize session state
+# Load model (cached) from Hugging Face
 # ---------------------------
-if 'summary_mode' not in st.session_state:
-    st.session_state.summary_mode = 'Paragraph'
-if 'summary_length' not in st.session_state:
-    st.session_state.summary_length = 'Short'
-if 'generated_summary' not in st.session_state:
-    st.session_state.generated_summary = ""
-if 'is_summarizing' not in st.session_state:
-    st.session_state.is_summarizing = False
-if 'input_text' not in st.session_state:
-    st.session_state.input_text = ""
-if 'article' not in st.session_state:
-    st.session_state.article = ""
+@st.cache_resource
+def load_model_cached(model_id: str):
+    """Loads and caches the model/tokenizer from Hugging Face Hub."""
+    # local_files_only is removed to allow downloading
+    tokenizer = T5Tokenizer.from_pretrained(model_id)
+    model = T5ForConditionalGeneration.from_pretrained(model_id)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    model.eval()
+    return tokenizer, model, device
 
-# ---------------------------
-# Header
-# ---------------------------
-st.markdown(
-    '<div class="header">'
-    '<div class="title">Text Summarizer</div>'
-    '<div class="tagline">Intelligent AI-powered text summarization</div>'
-    '<div class="credit">Enhanced with T5 Model by Bishal Ray</div>'
-    '</div>',
-    unsafe_allow_html=True
-)
-
-# ---------------------------
-# Main Container
-# ---------------------------
-st.markdown('<div class="main-container">', unsafe_allow_html=True)
-
-# Settings Panel
-st.markdown('<div class="settings-panel">', unsafe_allow_html=True)
-st.markdown('<div class="settings-title">Advanced Settings</div>', unsafe_allow_html=True)
-
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    st.markdown('<div class="setting-item">', unsafe_allow_html=True)
-    st.markdown('<label class="setting-label">Max Length</label>', unsafe_allow_html=True)
-    max_length = st.slider("", 50, 500, 150, key="max_length")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with col2:
-    st.markdown('<div class="setting-item">', unsafe_allow_html=True)
-    st.markdown('<label class="setting-label">Min Length</label>', unsafe_allow_html=True)
-    min_length = st.slider("", 10, 100, 30, key="min_length")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with col3:
-    st.markdown('<div class="setting-item">', unsafe_allow_html=True)
-    st.markdown('<label class="setting-label">Beam Search</label>', unsafe_allow_html=True)
-    num_beams = st.slider("", 1, 8, 4, key="num_beams")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with col4:
-    st.markdown('<div class="setting-item">', unsafe_allow_html=True)
-    st.markdown('<label class="setting-label">Length Penalty</label>', unsafe_allow_html=True)
-    length_penalty = st.slider("", 0.5, 3.0, 2.0, step=0.1, key="length_penalty")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# ---------------------------
-# Main Summarizer Card
-# ---------------------------
-st.markdown('<div class="summarizer-card">', unsafe_allow_html=True)
-
-# Modes Header
-st.markdown('<div class="modes-header">', unsafe_allow_html=True)
-st.markdown(
-    '<div class="modes-row">'
-    '<div class="modes-section">'
-    '<span class="modes-label">Modes:</span>'
-    f'<div class="mode-tab {"active" if st.session_state.summary_mode == "Paragraph" else ""}" onclick="setMode(\'Paragraph\')">Paragraph</div>'
-    f'<div class="mode-tab {"active" if st.session_state.summary_mode == "Bullet Points" else ""}" onclick="setMode(\'Bullet Points\')">Bullet Points</div>'
-    f'<div class="mode-tab {"active" if st.session_state.summary_mode == "Custom" else ""}" onclick="setMode(\'Custom\')">Custom</div>'
-    '</div>'
-    '<div class="length-section">'
-    '<span class="length-label">Summary Length:</span>'
-    '<div class="length-slider-container">'
-    '<span class="length-option">Short</span>'
-    f'<input type="range" min="1" max="3" value="{["Short", "Medium", "Long"].index(st.session_state.summary_length) + 1}" style="margin: 0 8px;" onchange="setLength(this.value)">'
-    '<span class="length-option">Long</span>'
-    '</div>'
-    '</div>'
-    '</div>',
-    unsafe_allow_html=True
-)
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Hidden controls for functionality
-col1, col2, col3 = st.columns([1, 1, 1])
-with col1:
-    if st.button("Paragraph", key="para_btn"):
-        st.session_state.summary_mode = 'Paragraph'
-        st.rerun()
-
-with col2:
-    if st.button("Bullet Points", key="bullet_btn"):
-        st.session_state.summary_mode = 'Bullet Points'
-        st.rerun()
-
-with col3:
-    if st.button("Custom", key="custom_btn"):
-        st.session_state.summary_mode = 'Custom'
-        st.rerun()
-
-# Length selector (hidden)
-length_mapping = {"1": "Short", "2": "Medium", "3": "Long"}
-if st.button("Update Length", key="length_update"):
-    # This will be triggered by JavaScript
-    pass
-
-# Input Section
-st.markdown('<div class="input-section">', unsafe_allow_html=True)
-
-# Text input
-article = st.text_area("", 
-                         height=200,
-                         placeholder="Enter or paste your text and press \"Summarize.\"",
-                         key="text_input",
-                         value=st.session_state.article)
-
-st.session_state.article = article
-
-# Show paste button when text area is empty
-if not article.strip():
-    st.markdown(
-        '<div class="paste-text-button">'
-        '<svg class="paste-icon" viewBox="0 0 24 24">'
-        '<path d="M19,3H14.82C14.4,1.84 13.3,1 12,1C10.7,1 9.6,1.84 9.18,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3M12,3A1,1 0 0,1 13,4A1,1 0 0,1 12,5A1,1 0 0,1 11,4A1,1 0 0,1 12,3"/>'
-        '</svg>'
-        'Paste Text'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Bottom Section
-st.markdown('<div class="bottom-section">', unsafe_allow_html=True)
-
-# Upload Doc button
-st.markdown(
-    '<div class="upload-doc">'
-    '<svg width="16" height="16" viewBox="0 0 24 24" fill="#5f6368">'
-    '<path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>'
-    '</svg>'
-    'Upload Doc'
-    '</div>',
-    unsafe_allow_html=True
-)
-
-# Stats and Summarize button
-input_word_count = count_words(article)
-input_sentence_count = count_sentences(article)
-
-st.markdown(
-    f'<div style="display: flex; align-items: center; gap: 24px;">'
-    f'<div class="summarize-button" onclick="summarize()" {"style=\"opacity: 0.5; cursor: not-allowed;\"" if not article.strip() else ""}>Summarize</div>'
-    f'<div class="stats"><span class="stat-number">{input_sentence_count}</span> sentences • <span class="stat-number">{input_word_count}</span> words</div>'
-    f'</div>',
-    unsafe_allow_html=True
-)
-
-st.markdown('</div>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Hidden summarize button for functionality
-if st.button("Hidden Summarize", key="hidden_summarize"):
-    if article.strip():
-        st.session_state.input_text = article
-        st.session_state.is_summarizing = True
-        st.rerun()
-
-# Clear button (hidden)
-if st.button("Clear All", key="clear_all"):
-    st.session_state.article = ""
-    st.session_state.generated_summary = ""
-    st.session_state.input_text = ""
-    st.session_state.is_summarizing = False
-    st.rerun()
-
-# ---------------------------
-# Summary Box
-# ---------------------------
-st.markdown('<div class="summary-box">', unsafe_allow_html=True)
-st.markdown('<div class="summary-content">', unsafe_allow_html=True)
-
-if st.session_state.is_summarizing:
-    # Show spinner
-    st.markdown(
-        '<div class="spinner-container">'
-        '<div class="spinner"></div>'
-        '<div class="spinner-text">Generating summary...</div>'
-        '</div>',
-        unsafe_allow_html=True
-    )
-    
-    # Perform summarization
-    if tokenizer and model:
+# Initialize model loading
+if not st.session_state["model_loaded"]:
+    with st.spinner(f"Loading model '{MODEL_ID}'..."):
         try:
-            input_text = "summarize: " + st.session_state.input_text
-            inputs = tokenizer.encode(input_text, return_tensors="pt", max_length=512, truncation=True).to(device)
-            
-            with torch.no_grad():
-                summary_ids = model.generate(
-                    inputs,
-                    max_length=max_length,
-                    min_length=min_length,
-                    length_penalty=length_penalty,
-                    num_beams=num_beams,
-                    early_stopping=True,
-                    no_repeat_ngram_size=3
-                )
-            
-            summary = tokenizer.batch_decode(summary_ids, skip_special_tokens=True)[0]
-            
-            # Format summary based on mode
-            if st.session_state.summary_mode == 'Bullet Points':
-                summary = convert_to_bullet_points(summary)
-            
-            st.session_state.generated_summary = summary
-            st.session_state.is_summarizing = False
-            st.rerun()
-            
+            # The check for a local directory is removed
+            tokenizer, model, device = load_model_cached(MODEL_ID)
+            st.session_state.update({
+                "tokenizer": tokenizer,
+                "model": model,
+                "device": device,
+                "model_loaded": True
+            })
         except Exception as e:
-            st.error(f"Error generating summary: {str(e)}")
-            st.session_state.is_summarizing = False
+            st.error(f"Model load error: {e}")
+            st.session_state["model_loaded"] = False
+
+# ---------------------------
+# Callbacks
+# ---------------------------
+def start_summarization():
+    """Callback to start the summarization process."""
+    if not st.session_state.article.strip():
+        st.warning("Please enter some text to summarize.")
+        return
+    st.session_state.generating = True
+    st.session_state.summary = ""
+    st.session_state.error = None
+
+def clear_all():
+    """Clears all inputs and outputs."""
+    st.session_state.article = ""
+    st.session_state.summary = ""
+    st.session_state.generating = False
+    st.session_state.error = None
+
+# ---------------------------
+# CSS
+# ---------------------------
+st.markdown("""
+<style>
+:root {
+    --primary-color: #0ea36b;
+    --background-color: #F8F9FA;
+    --card-background-color: #FFFFFF;
+    --text-color: #31333F;
+    --subtle-text-color: #64748B;
+    --border-color: #DEE2E6;
+}
+body { background-color: var(--background-color); color: var(--text-color); }
+@keyframes pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+.loading-text { color: var(--subtle-text-color); font-weight: bold; animation: pulse 1.5s ease-in-out infinite; }
+.stButton > button { background-color: var(--primary-color) !important; border: 1px solid var(--primary-color) !important; color: white !important; }
+.stButton > button:hover { opacity: 0.8; }
+.header { text-align:center; margin-bottom:14px; }
+.header h1 { color:var(--primary-color); margin:0; }
+.top-bar { background: var(--card-background-color); padding: 16px; border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border-color); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+.stTextArea textarea { background-color: #FFFFFF; color: var(--text-color); border: 1px solid var(--border-color); }
+.text-area { border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; background: var(--card-background-color); color: var(--text-color); min-height: 200px; display: flex; align-items: center; justify-content: center; }
+.text-area-content { width: 100%; text-align: left; }
+.footer-text { text-align:center; margin-top:12px; color: var(--subtle-text-color); }
+</style>
+""", unsafe_allow_html=True)
+
+# ---------------------------
+# UI Header
+# ---------------------------
+st.markdown("<div class='header'><h1>Text Summarizer</h1></div>", unsafe_allow_html=True)
+
+# Top controls
+st.markdown('<div class="top-bar">', unsafe_allow_html=True)
+c1, c2 = st.columns([2, 3])
+with c1:
+    st.radio("Mode:", ["Paragraph", "Bullet Points", "Custom"], key="mode", horizontal=True)
+with c2:
+    st.slider("Summary Length", 50, 300, 100, key="summary_length")
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ---------------------------
+# Main columns
+# ---------------------------
+left_col, right_col = st.columns([3, 2])
+
+with left_col:
+    st.text_area("Enter your text to summarize", key="article", height=320, placeholder="Paste your text here...")
+
+    if st.session_state.mode == "Custom":
+        st.number_input(
+            "Number of bullets", min_value=1, max_value=20, key="custom_bullets"
+        )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.button("🚀 Summarize", on_click=start_summarization, use_container_width=True)
+    with col2:
+        st.button("🧹 Clear", on_click=clear_all, use_container_width=True)
+
+# --- This is the main logic block that runs when generating ---
+if st.session_state.generating:
+    try:
+        tokenizer = st.session_state.tokenizer
+        model = st.session_state.model
+        device = st.session_state.device
+        max_len = st.session_state.summary_length
+        mode = st.session_state.mode
+
+        prompt = "summarize: " + st.session_state.article
+        if mode == "Bullet Points":
+            prompt += " in bullet points"
+        elif mode == "Custom":
+            prompt += f" in exactly {st.session_state.custom_bullets} concise bullet points"
+
+        inputs = tokenizer.encode(prompt, return_tensors="pt", max_length=1024, truncation=True).to(device)
+        with torch.no_grad():
+            outputs = model.generate(
+                inputs,
+                max_length=max_len,
+                min_length=max(20, max_len // 4), # Ensure min_length is reasonable
+                length_penalty=2.0,
+                num_beams=4,
+                early_stopping=True,
+                no_repeat_ngram_size=3
+            )
+        summary = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        st.session_state.summary = summary
+
+    except Exception as e:
+        st.session_state.error = f"Error during generation: {e}"
+        st.session_state.summary = ""
+    finally:
+        # After generation (or error), turn off the generating flag
+        st.session_state.generating = False
+        st.rerun() # Rerun to update the display in the right column
+
+
+with right_col:
+    st.subheader("Summary Output")
+    summary_placeholder = st.empty()
+
+    # Display spinner, summary, error, or initial message
+    if st.session_state.generating:
+        summary_placeholder.markdown(
+            "<div class='text-area'><div class='loading-text'>Generating summary...</div></div>",
+            unsafe_allow_html=True
+        )
+    elif st.session_state.error:
+        summary_placeholder.markdown(
+            f"<div class='text-area'><div class='text-area-content' style='color:#D32F2F; text-align:center;'>⚠️ {html.escape(st.session_state.error)}</div></div>",
+            unsafe_allow_html=True
+        )
+    elif st.session_state.summary:
+        summary = st.session_state.summary
+        mode = st.session_state.mode
+        if mode in ["Bullet Points", "Custom"]:
+            sentences = split_into_sentences(summary)
+            if mode == "Custom":
+                sentences = sentences[:st.session_state.custom_bullets]
+            list_items = "".join(f"<li>{html.escape(s)}</li>" for s in sentences if s.strip())
+            summary_placeholder.markdown(
+                f"<div class='text-area'><div class='text-area-content'><ul>{list_items}</ul></div></div>",
+                unsafe_allow_html=True
+            )
+        else: # Paragraph mode
+            safe_html = "<div style='white-space:pre-wrap'>" + html.escape(summary) + "</div>"
+            summary_placeholder.markdown(
+                f"<div class='text-area'><div class='text-area-content'>{safe_html}</div></div>",
+                unsafe_allow_html=True
+            )
     else:
-        st.error("Model not loaded. Cannot generate summary.")
-        st.session_state.is_summarizing = False
+        summary_placeholder.markdown(
+            "<div class='text-area'><div class='text-area-content' style='color:var(--subtle-text-color); text-align:center;'>Your generated summary will appear here.</div></div>",
+            unsafe_allow_html=True
+        )
 
-
-elif st.session_state.generated_summary:
-    # Display generated summary
-    st.markdown(f'<div class="summary-text">{st.session_state.generated_summary}</div>', unsafe_allow_html=True)
-
-else:
-    # Empty state
-    st.markdown(
-        '<div class="empty-state">'
-        '<div class="empty-icon">📄</div>'
-        '<div class="empty-text">Your summary will appear here</div>'
-        '<div class="empty-subtext">Enter text above and click "Summarize" to get started</div>'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Summary stats and download
-if st.session_state.generated_summary:
-    summary_word_count = count_words(st.session_state.generated_summary)
-    summary_sentence_count = count_sentences(st.session_state.generated_summary)
-    
-    st.markdown(
-        f'<div class="summary-stats">'
-        f'<div>'
-        f'<span class="stat-number">{summary_sentence_count}</span> sentences • '
-        f'<span class="stat-number">{summary_word_count}</span> words • '
-        f'Mode: <span class="stat-number">{st.session_state.summary_mode}</span>'
-        f'</div>'
-        f'<div class="download-button" onclick="downloadSummary()">'
-        f'<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">'
-        f'<path d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/>'
-        f'</svg>'
-        f'Download'
-        f'</div>'
-        f'</div>',
-        unsafe_allow_html=True
-    )
-    
-    # Hidden download button
-    st.download_button("Download Summary", 
-                      st.session_state.generated_summary, 
-                      file_name="summary.txt", 
-                      mime="text/plain",
-                      key="download_btn")
-
-st.markdown('</div>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
-
-# JavaScript for interactivity
-st.markdown(
-    """
-    <script>
-    function summarize() {
-        const textArea = document.querySelector('textarea');
-        if (!textArea || !textArea.value.trim()) {
-            return;
-        }
-        
-        // Trigger the hidden summarize button
-        const buttons = document.querySelectorAll('button');
-        const summarizeBtn = Array.from(buttons).find(btn => btn.textContent === 'Hidden Summarize');
-        if (summarizeBtn) {
-            summarizeBtn.click();
-        }
-    }
-    
-    function setMode(mode) {
-        // Trigger the appropriate mode button
-        const buttons = document.querySelectorAll('button');
-        let targetBtn;
-        if (mode === 'Paragraph') {
-            targetBtn = Array.from(buttons).find(btn => btn.textContent === 'Paragraph' && btn.style.display !== 'none');
-        } else if (mode === 'Bullet Points') {
-            targetBtn = Array.from(buttons).find(btn => btn.textContent === 'Bullet Points' && btn.style.display !== 'none');
-        } else if (mode === 'Custom') {
-            targetBtn = Array.from(buttons).find(btn => btn.textContent === 'Custom' && btn.style.display !== 'none');
-        }
-        if (targetBtn) {
-            targetBtn.click();
-        }
-    }
-    
-    function setLength(value) {
-        // Handle length changes if needed
-        console.log('Length changed to:', value);
-    }
-    
-    function downloadSummary() {
-        // Trigger the hidden download button
-        const buttons = document.querySelectorAll('button');
-        const downloadBtn = Array.from(buttons).find(btn => btn.textContent === 'Download Summary');
-        if (downloadBtn) {
-            downloadBtn.click();
-        }
-    }
-    
-    // Auto-focus text area
-    setTimeout(() => {
-        const textArea = document.querySelector('textarea');
-        if (textArea && !textArea.value.trim()) {
-            textArea.focus();
-        }
-    }, 100);
-    </script>
-    """,
-    unsafe_allow_html=True
-)
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-
+# Footer
+st.markdown("<div class='footer-text'>Made with ❤️ using Streamlit & Transformers</div>", unsafe_allow_html=True)
