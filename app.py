@@ -1,7 +1,6 @@
 import streamlit as st
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import torch
-import os
 
 # ---------------------------
 # Page configuration
@@ -13,19 +12,13 @@ st.set_page_config(
 )
 
 # ---------------------------
-# Set Hugging Face token
-# ---------------------------
-# Recommended: Set this in Streamlit Cloud Secrets (HUGGINGFACE_HUB_TOKEN)
-os.environ["HUGGINGFACE_HUB_TOKEN"] = "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"
-
-# ---------------------------
 # Load Model & Tokenizer
 # ---------------------------
 @st.cache_resource(show_spinner=True)
 def load_model():
-    MODEL_NAME = "BISHAL2301/summarizer"  # Your HF repo
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, use_auth_token=True)
-    model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME, use_auth_token=True)
+    MODEL_NAME = "BISHAL2301/summarizer"  # Replace with your Hugging Face model repo
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     model.eval()
@@ -128,5 +121,6 @@ if st.button("Summarize"):
             summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
         
         st.markdown(f'<div class="card"><div class="summary-text">{summary}</div></div>', unsafe_allow_html=True)
+
 
 
