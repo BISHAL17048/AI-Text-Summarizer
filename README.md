@@ -17,7 +17,7 @@ Live demo: **[https://summary-analysis-1-ktnobq3ehutvc46tyiaqxl.streamlit.app](h
 Open the live application here: [https://summary-analysis-1-ktnobq3ehutvc46tyiaqxl.streamlit.app](https://summary-analysis-1-ktnobq3ehutvc46tyiaqxl.streamlit.app)
 
 ---
-## 🎥 Dataset for Fine Tuning:
+## Dataset for Fine Tuning:
 
 Dataset: [https://www.kaggle.com/datasets/bishalray2401/summary-analysis-dataset](https://www.kaggle.com/datasets/bishalray2401/summary-analysis-dataset)
 
